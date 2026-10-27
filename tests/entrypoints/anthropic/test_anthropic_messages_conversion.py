@@ -1427,6 +1427,12 @@ PERMISSIVE_TEMPLATE = (
     "{%- endfor %}"
 )
 
+# Like OLMo 3: an undefined ``tools`` is not ``none`` and fails ``tojson``.
+TOOLS_BRANCH_TEMPLATE = (
+    "{%- if tools is none %}no tools{%- else %}{{ tools | tojson }}{%- endif %}"
+    + PERMISSIVE_TEMPLATE
+)
+
 
 class TestDetectMergeInlineSystem:
     """Verify _detect_merge_inline_system auto-detection.
@@ -1454,9 +1460,18 @@ class TestDetectMergeInlineSystem:
         """No chat_template → conservative default: merge."""
         assert AnthropicServingMessages._detect_merge_inline_system(None) is True
 
+    def test_non_template_error_defaults_merge(self):
+        """A non-jinja error while probing falls back to merge, not a crash."""
+        template = "{{ undefined_value | tojson }}" + PERMISSIVE_TEMPLATE
+        assert AnthropicServingMessages._detect_merge_inline_system(template) is True
+
     @pytest.mark.parametrize(
         ("resolved", "expected"),
-        [(PERMISSIVE_TEMPLATE, False), (Q35_TEMPLATE, True)],
+        [
+            (PERMISSIVE_TEMPLATE, False),
+            (Q35_TEMPLATE, True),
+            (TOOLS_BRANCH_TEMPLATE, False),
+        ],
     )
     def test_probes_resolved_template_without_cli_override(
         self, monkeypatch, resolved, expected

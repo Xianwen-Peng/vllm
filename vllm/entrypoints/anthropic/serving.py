@@ -283,7 +283,8 @@ class AnthropicServingMessages(OpenAIServingChat):
                         online_renderer.chat_template,
                         tools,
                         model_config=online_renderer.model_config,
-                    )
+                    ),
+                    tools,
                 )
                 for tools in tool_variants
             )
@@ -299,12 +300,19 @@ class AnthropicServingMessages(OpenAIServingChat):
         return merge
 
     @staticmethod
-    def _detect_merge_inline_system(chat_template: str | None) -> bool:
+    def _detect_merge_inline_system(
+        chat_template: str | None,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> bool:
         """Auto-detect whether the chat template requires system-first ordering.
 
         Renders a [system, user, system, user] conversation against the
         template; if it raises (e.g. Qwen's ``loop.first`` guard), the
         model needs inline system messages merged into the leading block.
+
+        ``tools`` is rendered as a request would pass it. Any render failure
+        falls back to merging, so a template the probe cannot render does not
+        stop server startup.
         """
         if not chat_template:
             return True
@@ -321,10 +329,16 @@ class AnthropicServingMessages(OpenAIServingChat):
                     {"role": "system", "content": "t"},
                     {"role": "user", "content": "t"},
                 ],
+                tools=tools,
                 add_generation_prompt=False,
             )
             return False
-        except jinja2.TemplateError:
+        except Exception:
+            logger.debug(
+                "Inline-system probe failed to render the chat template; "
+                "merging inline system messages.",
+                exc_info=True,
+            )
             return True
 
     @staticmethod
